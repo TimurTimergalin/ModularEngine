@@ -41,7 +41,6 @@ class ModularObject(TreeObject):
     def __init__(self):
         self._x: Union[int, float] = 0
         self._y: Union[int, float] = 0
-        self._z: Union[int, float] = 0
 
         super(ModularObject, self).__init__()
 
@@ -66,16 +65,6 @@ class ModularObject(TreeObject):
         self._x = val
 
     y = property(get_x, set_x)
-
-    def get_z(self):
-        return self._z
-
-    def set_z(self, val):
-        if not isinstance(val, (int, float)):
-            raise TypeError("coordinates should be real numbers, int or float")
-        self._z = val
-
-    z = property(get_z, set_z)
 
     def relative_coordinates(self) -> tuple[Union[int, float], Union[int, float]]:
         return self.x, self.y
@@ -132,9 +121,6 @@ class ModularObject(TreeObject):
         for module in self._functional_modules:
             module.run(self, events)
 
-    def render(self, events) -> Surface:
-        return Surface((0, 0))
-
 
 class Root(TreeObject):
     @property
@@ -157,19 +143,34 @@ class HUD(Root):
 class VisualObject(ModularObject):
     def __init__(self):
         super(VisualObject, self).__init__()
+
+        self._z: Union[int, float] = 0
+
         self._cosmetic_modules: list[CosmeticModule] = BinarySearchList(lambda x: x)
 
         self._surface = Surface((0, 0))
         self._camera_shift = 1
 
-    def render(self, events) -> Surface:
+    def get_z(self):
+        return self._z
+
+    def set_z(self, val):
+        if not isinstance(val, (int, float)):
+            raise TypeError("coordinates should be real numbers, int or float")
+        self._z = val
+
+    z = property(get_z, set_z)
+
+    def render(self) -> Surface:
         res = self.surface
         for child in self.children:
+            if not isinstance(child, VisualObject):
+                continue
             coords = child.relative_coordinates()
-            res.blit(child.render(events), coords)
+            res.blit(child.render(), coords)
 
         for module in self._cosmetic_modules:
-            module.run(res, events)
+            module.run(res)
 
         return res
 
@@ -216,4 +217,53 @@ class VisualObject(ModularObject):
 
 
 class Camera(ModularObject):
-    pass
+    def __init__(self):
+        super(Camera, self).__init__()
+        self._camera_surface = Surface((0, 0))
+        self._camera_cosmetic_modules: list[CosmeticModule] = []
+
+    def relative_center(self):
+        x, y = self.relative_coordinates()
+        x += self._camera_surface.get_width()
+        y += self._camera_surface.get_height()
+        return x, y
+
+    def global_center(self):
+        x, y = self.global_coordinates()
+        x += self._camera_surface.get_width()
+        y += self._camera_surface.get_height()
+        return x, y
+
+    def _camera_shift_coords(self, child):
+        x, y = child.x, child.y
+        dx, dy = -self.x * child.camera_shift, -self.y * child.camera_shift
+        return x + dx, y + dy
+
+    def crop(self):
+        res = self._camera_surface.copy()
+        for child in self.root.children:
+            if not isinstance(child, VisualObject):
+                continue
+
+            surf = child.render()
+            res.blit(surf, self._camera_shift_coords(child))
+        for module in self._camera_cosmetic_modules:
+            res = module.run(res)
+
+        return res
+
+    @property
+    def camera_cosmetic_modules(self) -> list[CosmeticModule]:
+        return self._camera_cosmetic_modules.copy()
+
+    def camera_add_cosmetic_module(self, module):
+        if not isinstance(module, CosmeticModule):
+            raise TypeError("wrong type of added module")
+
+        self._camera_cosmetic_modules.append(module)
+
+    def camera_remove_cosmetic_module(self, module):
+        self._camera_cosmetic_modules.remove(module)
+
+    def camera_have_cosmetic_module(self, module) -> bool:
+        return module in self._camera_cosmetic_modules

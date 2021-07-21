@@ -13,5 +13,5 @@ class FunctionalModule(ABC):
 
 class CosmeticModule(ABC):
     @abstractmethod
-    def run(self, surf, events):
+    def run(self, surf):
         pass
