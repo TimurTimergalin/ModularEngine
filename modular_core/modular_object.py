@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from modular_engine.core.module import FunctionalModule, CosmeticModule
-from modular_engine.core.additional_types import BinarySearchList, TreeError
+from modular_core.module import FunctionalModule, CosmeticModule
+from modular_core.additional_types import BinarySearchList, TreeError
 from typing import Union, Optional
 from pygame import Surface
 
