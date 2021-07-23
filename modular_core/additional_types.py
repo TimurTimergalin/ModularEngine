@@ -18,7 +18,7 @@ class BinarySearchList(list):
 
     def append(self, __object) -> None:
         ind = self.binary_search(self.criteria(__object), 0, len(self))
-        self.insert(ind, __object)
+        self.insert(ind + 1, __object)
 
 
 class ModularException(Exception):
