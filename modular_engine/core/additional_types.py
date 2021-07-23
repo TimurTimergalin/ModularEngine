@@ -19,3 +19,11 @@ class BinarySearchList(list):
     def append(self, __object) -> None:
         ind = self.binary_search(self.criteria(__object), 0, len(self))
         self.insert(ind, __object)
+
+
+class ModularException(Exception):
+    pass
+
+
+class TreeError(ModularException):
+    pass

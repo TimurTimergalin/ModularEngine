@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from modular_engine.core.module import FunctionalModule, CosmeticModule
-from modular_engine.core.additional_types import BinarySearchList
+from modular_engine.core.additional_types import BinarySearchList, TreeError
 from typing import Union, Optional
 from pygame import Surface
 
@@ -8,7 +8,7 @@ from pygame import Surface
 class TreeObject(ABC):
     def __init__(self):
         self._parent: Optional[TreeObject] = None
-        self._children: list[ModularObject] = []
+        self._children: list[ModularObject] = BinarySearchList(lambda x: x.z if hasattr(x, 'z') else float('inf'))
 
     @property
     @abstractmethod
@@ -44,7 +44,7 @@ class ModularObject(TreeObject):
 
         super(ModularObject, self).__init__()
 
-        self._functional_modules: list[FunctionalModule] = BinarySearchList(lambda x: x)
+        self._functional_modules: list[FunctionalModule] = []
 
     def get_x(self):
         return self._x
@@ -72,7 +72,7 @@ class ModularObject(TreeObject):
     def global_coordinates(self) -> tuple[Union[int, float], Union[int, float]]:
         x, y = self.x, self.y
         parent = self.parent
-        while parent is not None:  # if parent is not None, TreeObject is always ModularObject
+        while parent is not None:  # if parent is not None, TreeObject is always ModularObject, ignore the warning
             x += self.parent.x
             y += self.parent.y
             parent = parent.parent
@@ -121,23 +121,19 @@ class ModularObject(TreeObject):
         for module in self._functional_modules:
             module.run(self, events)
 
+    @staticmethod
+    def is_visual():
+        return False
 
-class Root(TreeObject):
-    @property
-    def parent(self):
-        return None
-
-    @property
-    def root(self):
-        return self
+    @staticmethod
+    def is_special():
+        return False
 
 
-class Scene(Root):
-    pass
-
-
-class HUD(Root):
-    pass
+class SpecialObject(ModularObject):
+    @staticmethod
+    def is_special():
+        return True
 
 
 class VisualObject(ModularObject):
@@ -146,7 +142,7 @@ class VisualObject(ModularObject):
 
         self._z: Union[int, float] = 0
 
-        self._cosmetic_modules: list[CosmeticModule] = BinarySearchList(lambda x: x)
+        self._cosmetic_modules: list[CosmeticModule] = []
 
         self._surface = Surface((0, 0))
         self._camera_shift = 1
@@ -164,10 +160,10 @@ class VisualObject(ModularObject):
     def render(self) -> Surface:
         res = self.surface
         for child in self.children:
-            if not isinstance(child, VisualObject):
+            if not child.is_visual():
                 continue
             coords = child.relative_coordinates()
-            res.blit(child.render(), coords)
+            res.blit(child.render(), coords)  # Render visual objects only, ignore the warning
 
         for module in self._cosmetic_modules:
             module.run(res)
@@ -215,12 +211,22 @@ class VisualObject(ModularObject):
     def rect(self):
         return self._surface.get_rect()
 
+    @staticmethod
+    def is_visual():
+        return True
 
-class Camera(ModularObject):
-    def __init__(self):
+
+class Camera(SpecialObject):
+    def __init__(self, name):
         super(Camera, self).__init__()
         self._camera_surface = Surface((0, 0))
         self._camera_cosmetic_modules: list[CosmeticModule] = []
+
+        self._name = name
+
+    @property
+    def name(self):
+        return self._name
 
     def relative_center(self):
         x, y = self.relative_coordinates()
@@ -242,11 +248,11 @@ class Camera(ModularObject):
     def crop(self):
         res = self._camera_surface.copy()
         for child in self.root.children:
-            if not isinstance(child, VisualObject):
+            if not child.is_visual():
                 continue
 
             surf = child.render()
-            res.blit(surf, self._camera_shift_coords(child))
+            res.blit(surf, self._camera_shift_coords(child))  # Render visual objects only, ignore the warning
         for module in self._camera_cosmetic_modules:
             res = module.run(res)
 
@@ -267,3 +273,63 @@ class Camera(ModularObject):
 
     def camera_have_cosmetic_module(self, module) -> bool:
         return module in self._camera_cosmetic_modules
+
+    @staticmethod
+    def is_visual():
+        return False
+
+
+class Root(TreeObject):
+    @property
+    def parent(self):
+        return None
+
+    @property
+    def root(self):
+        return self
+
+    def update(self, events):
+        for child in self._children:
+            child.update(events)
+
+
+class Scene(Root):
+    def __init__(self):
+        super(Scene, self).__init__()
+
+        self._cameras = {}
+        self._current_camera: Optional[Camera] = None
+
+    def add_child(self, child):
+        super(Scene, self).add_child(child)
+        if isinstance(child, Camera):
+            if self._cameras.get(child.name) is not None:
+                raise TreeError("trying to add existing object to a tree")
+            self._cameras[child.name] = child
+
+    def remove_child(self, child):
+        super(Scene, self).remove_child(child)
+        if isinstance(child, Camera):
+            del self._cameras[child.name]
+
+    def render(self):
+        return self._current_camera.crop()
+
+
+class HUD(Root):
+    def add_child(self, child):
+        if not child.is_visible():
+            raise TypeError("HUD can only contain visual objects")
+        super(HUD, self).add_child(child)
+
+    def render(self, surf):
+        for child in self._children:
+            surf.blit(child.render(), child.relative_coordinates())
+        return surf
+
+
+class ControlRoom(Root):
+    def add_child(self, child):
+        if child.is_visible() or child.is_special():
+            raise TypeError("ControlRoom can only contain non-visual not-special objects")
+        super(ControlRoom, self).add_child(child)
